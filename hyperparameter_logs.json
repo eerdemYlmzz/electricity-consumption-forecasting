@@ -1,0 +1,53 @@
+[
+    {
+        "experiment_name": "lstm_v1_baseline",
+        "hyperparameters": {
+            "input_size": 1,
+            "hidden_size": 64,
+            "num_stacked_layers": 2,
+            "batch_size": 64,
+            "sequence_length": 60,
+            "learning_rate": 0.001,
+            "epochs": 10
+        },
+        "results": {
+            "final_train_loss": 0.21439768822452604,
+            "test_mse": 0.208934485912323,
+            "test_rmse": 0.4570935070514679
+        }
+    },
+    {
+        "experiment_name": "lstm_v1_baseline",
+        "hyperparameters": {
+            "input_size": 1,
+            "hidden_size": 64,
+            "num_stacked_layers": 2,
+            "batch_size": 64,
+            "sequence_length": 60,
+            "learning_rate": 0.001,
+            "epochs": 10
+        },
+        "results": {
+            "final_train_loss": 0.21439768822452604,
+            "test_mse": 0.208934485912323,
+            "test_rmse": 0.4570935070514679
+        }
+    },
+    {
+        "experiment_name": "lstm_v1_baseline",
+        "hyperparameters": {
+            "input_size": 1,
+            "hidden_size": 64,
+            "num_stacked_layers": 2,
+            "batch_size": 64,
+            "sequence_length": 60,
+            "learning_rate": 0.001,
+            "epochs": 10
+        },
+        "results": {
+            "final_train_loss": 0.21439768822452604,
+            "test_mse": 0.208934485912323,
+            "test_rmse": 0.4570935070514679
+        }
+    }
+]
