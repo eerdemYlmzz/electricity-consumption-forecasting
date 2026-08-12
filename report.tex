@@ -1,0 +1,529 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  columns=fullflexible
+}
+
+\title{Electricity Consumption Forecasting with Recurrent Architectures\\
+\large LSTM Baseline - Progress Report}
+\author{Erdem YILMAZ \\
+Adana Alparslan T\"urke\c{s} Science and Technology University \\
+Department of Artificial Intelligence Engineering}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{GitHub Repository}
+
+The repository for this project is available at:
+
+\begin{itemize}
+  \item \url{https://github.com/eerdemYlmzz/electricity-consumption-forecasting}
+\end{itemize}
+
+
+\section{Dataset}
+
+\subsection{Source}
+
+The dataset used in this study is the \emph{Power Consumption of Tetouan City} dataset.
+
+\begin{itemize}
+  \item Kaggle: \url{https://www.kaggle.com/datasets/fedesoriano/electric-power-consumption}
+  \item UCI Machine Learning Repository: \url{https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city}
+\end{itemize}
+
+\subsection{Related Publication}
+
+A paper associated with this dataset was found:
+
+\begin{quote}
+A. Salam and A. E. Hibaoui, ``Comparison of Machine Learning Algorithms for the Power
+Consumption Prediction: --- Case Study of Tetouan city ---,'' \emph{2018 6th International
+Renewable and Sustainable Energy Conference (IRSEC)}, Rabat, Morocco, 2018, pp. 1--5,
+doi: 10.1109/IRSEC.2018.8703007.
+\end{quote}
+
+
+\subsection{Original Features}
+
+The original dataset contains the following variables:
+
+\begin{itemize}
+  \item Temperature
+  \item Humidity
+  \item Wind Speed
+  \item General Diffuse Flows
+  \item Diffuse Flows
+  \item Power Consumption --- Zone 1
+  \item Power Consumption --- Zone 2
+  \item Power Consumption --- Zone 3
+\end{itemize}
+
+\noindent
+Only the first power consumption feature (\textbf{Zone 1}) is used in this study.
+
+\subsection{Data Used in This Study}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Shape & $52416 \times 3$ \\
+\texttt{datetime} & year, month, day \\
+\texttt{time} & 10-minute stride, starting at 00:00; next day follows 23:50 $+$ 10 \\
+\texttt{consumption} & consumption value, e.g.\ 34.0556962 kWh \\
+Date range & 2025-07-01 to 2026-06-29 (nearly one year) \\
+Scaling / normalization & None applied \\
+\bottomrule
+\end{tabular}
+\caption{Structure of the data used for training.}
+\end{table}
+
+\subsection{Date Modification}
+
+The dates in the current data differ from the original dataset. The original date range was
+\textbf{1/1/2017 to 31/12/2017}. The date component was dropped by the following preprocessing
+step, which keeps only the hour and minute:
+
+\begin{lstlisting}[language=Python]
+df["time"] = df["time"].apply(lambda x: pd.to_datetime(x).strftime("%H:%M"))
+\end{lstlisting}
+
+\section{Model Architecture and Training Setup}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Sequence length & 60 \\
+Input size & 1 \\
+Hidden size & 64 \\
+Stacked layers & 2 \\
+Batch size & 64 \\
+Shuffle & False \\
+Loss function & MSELoss \\
+Optimizer & Adam \\
+Learning rate & $1 \times 10^{-3}$ \\
+Epochs & 10 \\
+\bottomrule
+\end{tabular}
+\caption{Model and training hyperparameters.}
+\end{table}
+
+\subsection{Train / Test Split}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Split} & \textbf{Shape} (samples, sequence length, features) & \textbf{Ratio} \\
+\midrule
+Train & $41884 \times 60 \times 1$ & 0.8 \\
+Test  & $10472 \times 60 \times 1$ & 0.2 \\
+\bottomrule
+\end{tabular}
+\caption{Train and test set sizes.}
+\end{table}
+
+\section{Training Results}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{cc}
+\toprule
+\textbf{Epoch} & \textbf{Train Loss} \\
+\midrule
+1  & 248.0716 \\
+2  & 49.5510 \\
+3  & 20.2190 \\
+4  & 1.9236 \\
+5  & 0.7210 \\
+6  & 0.4287 \\
+7  & 0.3171 \\
+8  & 0.2547 \\
+9  & 0.2266 \\
+10 & 0.2154 \\
+\bottomrule
+\end{tabular}
+\caption{Training loss per epoch (10 epochs).}
+\end{table}
+
+\section{Metrics}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Result} \\
+\midrule
+MSE  & 0.1610 \\
+RMSE & 0.4013 \\
+MAE  & 0.2749 \\
+MAPE & 0.98\% \\
+R2   & 0.9958 \\
+\bottomrule
+\end{tabular}
+\caption{Baseline test set metrics.}
+\end{table}
+
+\noindent
+These values should be read against the persistence reference baseline reported in
+Section~\ref{sec:ablation}: a predictor that simply repeats the last observed value reaches
+$R^2 = 0.9920$ and $\mathrm{MAPE} = 1.27\%$ on this dataset without any training. On a series
+with 10-minute resolution and high autocorrelation, an $R^2$ close to $0.99$ is therefore not by
+itself evidence of a strong model; only the margin over the persistence baseline is informative.
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{electricity_consumption_1_5july.png}
+\caption{Electricity consumption.}
+\label{fig:consumption}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{lstm_model_forecast_1.png}
+\caption{LSTM model --- test set performance.}
+\label{fig:forecast}
+\end{figure}
+
+
+\section{Ablation Study: Validation, Early Stopping and Scaling}
+\label{sec:ablation}
+
+\subsection{Motivation}
+
+Three components were missing from the baseline setup: a validation split, early stopping, and
+input scaling. Adding them simultaneously would make it impossible to attribute any change in the
+metrics to a specific cause. The experiments below therefore follow a single-variable ablation
+design: two runs share the same seed, architecture, optimizer, epoch budget and early stopping
+policy, and differ only in whether standardization is applied.
+
+\subsection{Methodology}
+
+\begin{itemize}
+  \item \textbf{Fixed seed.} \texttt{random}, \texttt{numpy} and \texttt{torch} are all seeded
+        with 42. Without this, two runs of identical code produce different loss curves and no
+        comparison is meaningful.
+  \item \textbf{Leakage-free chronological split.} The raw series is split
+        \textbf{before} windowing into 70\% / 10\% / 20\% partitions, and the sliding windows are
+        then generated independently inside each partition. If the windows were generated first
+        and split afterwards, windows near a boundary would take their inputs from one partition
+        and their target from the next, leaking training timesteps into validation and test.
+  \item \textbf{Persistence baseline.} A training-free reference predictor,
+        $\hat{y}_t = y_{t-1}$, evaluated on the same partitions. It establishes the error floor
+        that any trained model must beat to demonstrate value.
+  \item \textbf{Early stopping.} Maximum 50 epochs, patience of 8 epochs on validation loss. The
+        weights of the best validation epoch are restored before the test set is evaluated.
+  \item \textbf{Scaling applied to Run B only.} Mean and standard deviation are computed on the
+        training partition alone and then applied to validation and test. Fitting the scaler on
+        the full series would leak test-set statistics into preprocessing.
+  \item \textbf{Metrics in original units.} For Run B the predictions and targets are
+        inverse-transformed before the metrics are computed, so Run A and Run B remain directly
+        comparable in kWh.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Partition} & \textbf{Raw index range} & \textbf{Length} & \textbf{Sequences} \\
+\midrule
+Train      & $[0,\ 36691)$      & 36691 & 36631 \\
+Validation & $[36691,\ 41932)$  & 5241  & 5181 \\
+Test       & $[41932,\ 52416)$  & 10484 & 10424 \\
+\bottomrule
+\end{tabular}
+\caption{Leakage-free 70/10/20 chronological split. Each partition loses
+\texttt{sequence\_length} $= 60$ samples to windowing.}
+\end{table}
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Model} & \textbf{MSE} & \textbf{RMSE} & \textbf{MAE} & \textbf{MAPE} & \textbf{R2} \\
+\midrule
+Persistence baseline   & 0.3032 & 0.5507 & 0.3697 & 1.27\% & 0.9920 \\
+Run A --- no scaling   & 0.1820 & 0.4266 & 0.3278 & 1.18\% & 0.9952 \\
+Run B --- standardized & 0.1638 & 0.4047 & 0.2942 & 1.04\% & 0.9957 \\
+\bottomrule
+\end{tabular}
+\caption{Test set metrics, original kWh units. The test partition is evaluated once, after
+training and model selection are complete.}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Model} & \textbf{MSE} & \textbf{RMSE} & \textbf{MAE} & \textbf{MAPE} & \textbf{R2} \\
+\midrule
+Persistence baseline   & 0.3824 & 0.6184 & 0.4162 & 1.23\% & 0.9909 \\
+Run A --- no scaling   & 0.1123 & 0.3351 & 0.2330 & 0.72\% & 0.9973 \\
+Run B --- standardized & 0.1018 & 0.3191 & 0.2169 & 0.67\% & 0.9976 \\
+\bottomrule
+\end{tabular}
+\caption{Validation set metrics at the selected (best) epoch. These values are optimistically
+biased, because the epoch was chosen by minimising validation loss.}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Run} & \textbf{Epochs run} & \textbf{Best epoch} & \textbf{Stopped early} \\
+\midrule
+Run A --- no scaling   & 46 & 38 & yes \\
+Run B --- standardized & 32 & 24 & yes \\
+\bottomrule
+\end{tabular}
+\caption{Early stopping behaviour (maximum 50 epochs, patience 8).}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{run_a_loss_curve.png}
+\caption{Run A --- train and validation loss per epoch, no scaling.}
+\label{fig:runa}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{run_b_loss_curve.png}
+\caption{Run B --- train and validation loss per epoch, standardized inputs.}
+\label{fig:runb}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{ablation_val_rmse.png}
+\caption{Validation RMSE per epoch for both runs, in original kWh units, against the persistence
+baseline.}
+\label{fig:ablation}
+\end{figure}
+
+\subsection{Findings}
+
+\begin{enumerate}
+  \item \textbf{The persistence baseline is a strong reference on this dataset.} Without any
+        training it reaches $R^2 = 0.9920$ and $\mathrm{MAPE} = 1.27\%$ on the test partition.
+        Consecutive 10-minute consumption values differ by very little relative to their
+        magnitude (mean consumption $\approx 33.8$ kWh, mean absolute change $\approx 0.42$ kWh),
+        so near-perfect $R^2$ is a property of the task, not of the model.
+
+  \item \textbf{Both trained models beat the baseline by a clear margin.} Run A reduces test RMSE
+        by 22.5\% relative to persistence and Run B by 26.5\%. The model is therefore not simply
+        reproducing the previous value.
+
+  \item \textbf{The main effect of scaling is convergence speed, not final quality.} Run B reaches
+        a validation RMSE of 0.4139 at epoch 2, a level Run A only reaches at epoch 12 --- roughly
+        a sixfold difference in the number of optimizer steps required. After both runs are
+        trained to convergence with early stopping, the remaining gap in test RMSE is only 5.1\%
+        (0.4266 versus 0.4047). An earlier version of this experiment used a fixed 10-epoch
+        budget and reported a much larger gap (0.5318 versus 0.4318); that difference was an
+        artefact of truncating training before the unscaled run had converged.
+
+  \item \textbf{Why the unscaled run converges slowly.} With MSE loss the residual gradient is
+        $\partial L / \partial \hat{y} = 2(\hat{y} - y)$. The network is initialised near zero
+        while the targets are centred around 33.8 kWh, so the output must first travel that
+        distance. Adam bounds the per-step parameter change at approximately the learning rate
+        ($10^{-3}$), so the first epochs are spent translating the output to the correct mean
+        rather than learning temporal structure. This is visible in Table~4 and in
+        Figure~\ref{fig:runa}: the loss falls by three orders of magnitude in the first five
+        epochs. Standardization removes this offset by centring the targets at zero.
+
+  \item \textbf{Overfitting appears only once the epoch budget is large enough to expose it.} With
+        a 10-epoch budget the validation loss never diverged from the training loss, so no
+        overfitting signature was observable. With a 50-epoch budget the validation loss reaches
+        its minimum at epoch 38 in Run A and epoch 24 in Run B and then rises slowly while the
+        training loss continues to fall. The effect is mild --- Run A validation loss increases
+        from 0.1123 to 0.1157 between epochs 38 and 46 --- and early stopping restores the best
+        weights, but it confirms that a fixed epoch count is not a safe training policy here.
+
+  \item \textbf{The validation--test gap is substantial and expected.} Run B reports RMSE 0.3191
+        on validation but 0.4047 on test. Two effects contribute: the selected epoch was chosen by
+        minimising validation loss, which biases the validation score optimistically, and the test
+        partition is chronologically later, so seasonal drift is present. Neither can be measured
+        without a test partition that is held out from all model-selection decisions.
+\end{enumerate}
+
+
+\section{Outputs}
+
+\begin{itemize}
+  \item Figures saved at \texttt{dpi = 300}.
+  \item Baseline hyperparameters and metrics saved to \texttt{hyperparameter\_logs.json}.
+  \item Baseline model saved to \texttt{model/lstm\_model\_1.pth}.
+  \item Ablation study implemented in \texttt{lstm\_ablation.py}, with per-epoch history written
+        to \texttt{hyperparameter\_logs.json} under the experiment names
+        \texttt{persistence\_baseline}, \texttt{lstm\_v4\_noscale\_earlystop} and
+        \texttt{lstm\_v5\_scaled\_earlystop}.
+  \item Ablation models saved to \texttt{model/lstm\_v4\_noscale\_earlystop.pth} and
+        \texttt{model/lstm\_v5\_scaled\_earlystop.pth}.
+\end{itemize}
+
+
+\section{Planned Work}
+
+\begin{itemize}
+  \item GRU
+  \item BiGRU
+  \item Attention
+  \item TCN
+  \item Newer attention architectures (Kimi K3, DeepSeek V3)
+  \item Sequential data modeling
+  \item Multivariate input (temperature, humidity, wind speed, diffuse flows, Zones 2--3) as a
+        prerequisite for Explainable Artificial Intelligence (XAI) based feature selection
+\end{itemize}
+
+
+\section{Open Questions and Missing Parts}
+
+\subsection{Resolved}
+
+\begin{itemize}
+  \item \textbf{Numeric precision.} Resolved: the \texttt{consumption} column is stored as
+        \texttt{float64} (8 bytes) in both the parquet and the CSV file. The 4-byte
+        (\texttt{float32}) representation appears only at training time, through
+        \texttt{torch.tensor(..., dtype=torch.float32)}. The \texttt{datetime} column is stored as
+        a string (\texttt{object}), not as \texttt{datetime64}.
+  \item \textbf{No validation set.} Resolved: a leakage-free 70/10/20 chronological split is now
+        used.
+  \item \textbf{No early stopping.} Resolved: patience-based early stopping on validation loss,
+        with restoration of the best weights.
+  \item \textbf{No validation loss per epoch.} Resolved: training loss, validation loss and
+        validation RMSE in original units are recorded for every epoch and plotted.
+  \item \textbf{No scaling or normalization.} Resolved as an ablation: Run B applies
+        standardization fitted on the training partition only, and its effect is quantified in
+        Section~\ref{sec:ablation}.
+\end{itemize}
+
+\subsection{Still Open}
+
+\begin{itemize}
+  \item \textbf{Attention and residual types.} Which attention and residual variants should be
+        used (Kimi K3, DeepSeek V3)?
+  \item \textbf{Single feature only.} Only Zone 1 power consumption is used; temperature,
+        humidity, wind speed, general diffuse flows, diffuse flows and Zones 2--3 are unused.
+  \item \textbf{Seasonal drift.} The margin over the persistence baseline shrinks on the
+        chronologically later test partition. The cause has not yet been isolated.
+  \item \textbf{Single-seed results.} All runs use seed 42. Repeating each configuration over
+        several seeds would separate real differences from initialisation noise.
+  \item \textbf{Horizon.} The current task is single-step ahead (10 minutes). Multi-step horizons
+        have not been evaluated.
+\end{itemize}
+
+
+\section{Discussion Notes}
+
+This section records the questions raised during the analysis, the hypotheses proposed, and the
+conclusions reached.
+
+\subsection*{Q1. Are all consumption values stored in 4 bytes?}
+
+No. Both \texttt{data/processed\_powerconsumption.parquet} and \texttt{data/data\_processed.csv}
+store \texttt{consumption} as \texttt{float64}, that is 8 bytes per value. The conversion to
+\texttt{float32} happens only when the tensor is created for training. The \texttt{datetime}
+column is a string rather than a datetime type, so it is re-parsed on every read.
+
+\subsection*{Q2. Is it reasonable to lower the learning rate because the unscaled values are large?}
+
+No, and the reasoning does not apply to this optimizer. Adam's update is
+$\Delta\theta = \eta \cdot \hat{m} / (\sqrt{\hat{v}} + \epsilon)$. Multiplying all gradients by a
+constant scales $\hat{m}$ and $\sqrt{\hat{v}}$ equally, so the step size is unchanged; Adam is
+invariant to the global gradient scale. The argument would be correct for plain SGD, where
+$\Delta\theta = \eta \cdot g$ scales directly with the gradient magnitude.
+
+The actual problem is the distance the output must travel. The network output starts near zero and
+the targets are centred around 33.8 kWh, while Adam bounds each parameter step at approximately
+$\eta = 10^{-3}$. Lowering the learning rate shortens each step and therefore makes the problem
+worse. Standardization is the correct remedy, and Run B confirms it: the same quality is reached
+in roughly one sixth of the optimizer steps.
+
+\subsection*{Q3. Does the model appear to have memorised the data?}
+
+Not in the classical sense of overfitting. With the original 10-epoch budget the validation loss
+never diverged from the training loss, so the overfitting signature was absent. Two separate
+issues were identified instead. First, the visually near-perfect overlap between prediction and
+ground truth in Figure~\ref{fig:forecast} is largely a property of the task: a persistence
+predictor produces a similar-looking curve. Second, once the epoch budget was extended to 50, a
+mild overfitting onset did become visible after epoch 38 (Run A) and epoch 24 (Run B), which is
+what early stopping now handles.
+
+\subsection*{Q4. How can the effect of each individual change be isolated?}
+
+By single-variable ablation with a fixed seed: only one independent variable changes between two
+runs while architecture, seed, optimizer, epoch budget and stopping policy remain identical.
+Without a fixed seed, a difference in the metrics cannot be distinguished from a difference in
+random initialisation.
+
+\subsection*{Q5. Can MAPE exceed 100\%?}
+
+Yes. MAPE is $\frac{100}{n}\sum |(y_i - \hat{y}_i)/y_i|$, and each term is the error relative to
+a reference value, not a part-of-a-whole ratio. If the true value is 30 and the prediction is 96,
+the term is $66/30 = 2.2$, i.e.\ 220\%. MAPE is bounded below by 0 and unbounded above. The value
+of 1.23\% observed here is small because the mean consumption is 33.82 kWh while the mean absolute
+error is 0.4162 kWh; the largest single-point ratio in the validation partition is 13.16\%.
+
+\subsection*{Q6. Why is MAPE expressed as a percentage rather than a raw ratio?}
+
+The factor of 100 is a presentation convention only and carries no information; 0.0123 and 1.23\%
+are the same quantity in different units. The convention matters in practice because libraries
+disagree: \texttt{sklearn.metrics.mean\_absolute\_percentage\_error} returns the fraction
+(0.0123), not the percentage. The implementation in \texttt{lstm\_ablation.py} multiplies by 100
+and therefore reports percentages.
+
+\subsection*{Q7. Does the validation set consist of training data?}
+
+No; the partitions are disjoint. The validation partition was carved out of the block previously
+assigned to training, but once separated it is excluded from all gradient updates. Its exact index
+range is given in Section~\ref{sec:ablation}.
+
+\subsection*{Q8. What exactly distinguishes the validation set from the test set?}
+
+Both are held out from gradient updates, so that is not the distinction. The distinction is
+whether a decision was made using the set. A held-out set provides an unbiased estimate of
+generalisation error only if nothing was selected using it. Weights are chosen by minimising the
+training loss, so the training loss is biased with respect to the weights. The stopping epoch is
+chosen by minimising the validation loss, so the validation loss is biased with respect to that
+choice --- taking the minimum over 50 noisy per-epoch measurements is itself an optimisation. The
+test set is used for no selection at all and therefore remains unbiased. The operational rule is
+that the validation set may be inspected and acted upon freely, whereas the test set is inspected
+once and never acted upon.
+
+\subsection*{Q9. Where does Explainable Artificial Intelligence (XAI) fit into feature selection?}
+
+XAI methods such as SHAP, Integrated Gradients or permutation importance attribute a prediction to
+individual input features. The current model has a single input feature (Zone 1 consumption), so
+there is no feature set to attribute over and no selection decision to support. XAI becomes
+applicable once the input is extended to the remaining variables --- temperature, humidity, wind
+speed, general diffuse flows, diffuse flows and Zones 2--3 --- which is therefore a prerequisite
+step rather than a parallel one.
+
+\end{document}
