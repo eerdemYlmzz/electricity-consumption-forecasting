@@ -13,7 +13,7 @@ step alone.
 A persistence (naive) baseline is evaluated first and acts as the reference
 floor: y_hat[t] = y[t-1].
 
-All reported metrics are computed in the original kWh units. For the scaled run
+All reported metrics are computed in the original consumption unit. For the scaled run
 the predictions and targets are inverse-transformed before the metrics are
 computed, so Run A and Run B remain directly comparable.
 """
@@ -138,7 +138,7 @@ class LSTM(nn.Module):
 
 
 def evaluate(model, loader, criterion, mean, scale):
-    """Return (loss in training units, metric dict in original kWh units)."""
+    """Return (loss in training units, metric dict in the original consumption unit)."""
     model.eval()
     total_loss = 0.0
     preds_all, targets_all = [], []
@@ -236,7 +236,7 @@ def run_experiment(experiment_name, apply_scaling):
         print(
             f"[{experiment_name}] epoch {epoch + 1:3d}/{MAX_EPOCHS} - "
             f"train_loss {train_loss:.6f} - val_loss {val_loss:.6f} - "
-            f"val_rmse_kwh {val_metrics['rmse']:.4f}{marker}"
+            f"val_rmse {val_metrics['rmse']:.4f}{marker}"
         )
 
         if epochs_without_improvement >= PATIENCE:
@@ -339,9 +339,9 @@ def plot_comparison(record_a, record_b, naive_val_rmse, filename):
         linestyle="--",
         label=f"Persistence baseline ({naive_val_rmse:.4f})",
     )
-    plt.title("Validation RMSE per Epoch (original kWh units)")
+    plt.title("Validation RMSE per Epoch (original consumption unit)")
     plt.xlabel("Epoch")
-    plt.ylabel("RMSE (kWh)")
+    plt.ylabel("RMSE (consumption)")
     plt.yscale("log")
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.6)
@@ -396,7 +396,7 @@ def main():
     plot_loss_curve(
         record_a,
         "run_a_loss_curve.png",
-        "Run A - Train vs Validation Loss (no scaling, raw kWh)",
+        "Run A - Train vs Validation Loss (no scaling, raw consumption values)",
     )
     plot_loss_curve(
         record_b,
@@ -417,7 +417,7 @@ def main():
     append_records([naive_record, record_a, record_b])
 
     print("\n" + "=" * 88)
-    print("Test set summary (original kWh units)")
+    print("Test set summary (original consumption unit)")
     print("=" * 88)
     print(format_metrics("persistence baseline", naive_test))
     print(format_metrics("Run A (no scaling)", record_a["results"]["test_metrics"]))
