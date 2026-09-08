@@ -1,10 +1,9 @@
 # Multivariate Forecasting Study
 
-Advisor-mandated revision (2026-09-03), superseding the single-dataset work in the repo root. Deadline: 2026-09-21.
 
 ## Structure
 
-- `data/raw/` — candidate datasets as downloaded, one subfolder per dataset (e.g. `data/raw/opsd_time_series/`, `data/raw/nasa_power/`). Not tracked in git (see `.gitignore`) — can be large.
+- `data/raw/` — candidate datasets as downloaded, one subfolder per dataset (e.g. `data/raw/opsd_time_series/`, `data/raw/nasa_power/`). Not tracked in git (see 
 - `data/processed/` — cleaned/merged datasets ready for windowing.
 - `notebooks/` — one processing notebook per candidate dataset. `00_template.ipynb` is the skeleton to copy for each new one (`0N_<dataset_name>.ipynb`); `common.py` holds the shared checks (`report_candidate`, `check_cumulative`) every notebook imports so the criteria report stays consistent across candidates. `01_opsd_household.ipynb` is the first worked example (raw meter data -> `data/processed/opsd_household_industrial3.csv`).
 
