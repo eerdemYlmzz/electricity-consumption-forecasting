@@ -1,2 +1,4 @@
 
 .env/
+multivariate-forecasting/data/raw/
+__pycache__/
