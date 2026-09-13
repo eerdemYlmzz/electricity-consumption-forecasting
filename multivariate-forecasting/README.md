@@ -55,7 +55,13 @@ Selected for the ≥3-detailed-comparison requirement. Deliberately kept to the 
    - Every trained model's weights are checkpointed to `results/checkpoints/{model}_{window}h.pt` (gitignored, regenerable by rerunning the script) so Phase 2's XAI work can reload them instead of retraining — `build_model(name, seq_len, num_inputs, HIDDEN_SIZE).load_state_dict(torch.load(path))`.
    - Rerun a subset instead of all 48 configs with `python phase1_baseline_models.py --models <name...> --windows <hours...>`; results are upserted into the CSV by (window, model), never wiping other rows.
    - Plots: `plots/phase1_window_length_comparison.png`, `plots/phase1_overfitting_evidence.png`, `plots/phase1_actual_vs_predicted.png`, `plots/phase1_error_over_time.png`.
-2. XAI feature ranking (SHAP/LIME, feature-level not lag-level)
-3. Top-k feature subset experiments (k = 3,4,5,6,8,10)
+2. XAI feature ranking — SHAP only (advisor's spec requires at least one of SHAP/LIME, not both; LIME's tabular explainer perturbs "features" independently, a poor fit for 72 highly autocorrelated lag steps per column, and far more expensive here for little added value). See `phase2_shap.py`.
+   - Explains the best Phase 1 config, **BiGRU @ 72h** (R²=0.988), reloaded from its Phase 1 checkpoint rather than retrained.
+   - `shap.GradientExplainer` (gradient-based — works directly on the trained PyTorch model, unlike LIME's thousands of perturbed forward passes per sample). Known cuDNN/RNN-backward incompatibility on GPU (`cudnn RNN backward can only be called in training mode`) — code falls back to CPU automatically, which is fast enough here (~1-2 min for the full run).
+   - 200 test windows explained against a background of 100 training windows, both drawn with `SEED=42` for reproducibility.
+   - **Lag aggregation (the advisor's critical requirement):** SHAP gives one value per (timestep, column) cell — 72×15=1080 numbers per window. These are summed (`|SHAP|`) over the 72 lag positions per column, then averaged over the 200 windows, collapsing down to **15 feature-level scores, no lag columns ever shown**.
+   - Result: `national_demand_mw`'s own lag dominates (mean |SHAP|=1.338, ~6x the next feature) — consistent with Phase 1's finding that the target's own history is the strongest signal. Ranked next: temperature at all 3 stations (T2M) and specific humidity (QV2M); wind (W2M), cloud/precipitation (TQL), and the `holiday`/`school` calendar flags rank lowest.
+   - Full ranking: `results/phase2_shap_feature_importance.csv`. Plot: `plots/phase2_shap_feature_importance.png`.
+3. Top-k feature subset experiments (k = 3,4,5,6,8,10) — selected from the Phase 2 SHAP ranking above
 4. HPO (Optuna + one faster alternative), selected features only
 5. Final evaluation on locked test set (MAE, RMSE, R²)
