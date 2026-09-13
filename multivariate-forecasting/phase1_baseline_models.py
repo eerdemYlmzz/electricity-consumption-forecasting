@@ -212,23 +212,27 @@ class LSTMAttentionForecaster(nn.Module):
 
 
 class BiGRUForecaster(nn.Module):
-    """Bidirectional GRU. No leakage concern: both directions only ever see
-    the past window itself, never the target -- the backward pass just
-    reads that same window right-to-left, it doesn't look past the window
-    end. Final representation is the forward pass's last hidden state
-    concatenated with the backward pass's last hidden state (h_n), not
-    out[:, -1, :] -- the latter would pair the forward-final state with the
+    """Bidirectional GRU, optionally stacked (num_layers > 1, used by
+    Phase 4's HPO search). No leakage concern: both directions only ever
+    see the past window itself, never the target -- the backward pass
+    just reads that same window right-to-left, it doesn't look past the
+    window end. Final representation is the LAST layer's forward hidden
+    state concatenated with the LAST layer's backward hidden state --
+    h_n is ordered (layer0_fwd, layer0_bwd, layer1_fwd, layer1_bwd, ...),
+    so the final layer's pair is always h_n[-2]/h_n[-1] (this also
+    correctly reduces to h_n[0]/h_n[1] when num_layers=1). Not
+    out[:, -1, :] -- that would pair the forward-final state with the
     backward direction's state after seeing only one input, which wastes
     the backward pass."""
 
-    def __init__(self, num_features, hidden_size):
+    def __init__(self, num_features, hidden_size, num_layers=1):
         super().__init__()
-        self.gru = nn.GRU(num_features, hidden_size, batch_first=True, bidirectional=True)
+        self.gru = nn.GRU(num_features, hidden_size, num_layers=num_layers, batch_first=True, bidirectional=True)
         self.fc = nn.Linear(hidden_size * 2, 1)
 
     def forward(self, x):
-        _, h_n = self.gru(x)  # h_n: (2, batch, hidden_size)
-        combined = torch.cat([h_n[0], h_n[1]], dim=1)
+        _, h_n = self.gru(x)  # h_n: (num_layers*2, batch, hidden_size)
+        combined = torch.cat([h_n[-2], h_n[-1]], dim=1)
         return self.fc(combined).squeeze(-1)
 
 
@@ -291,7 +295,7 @@ class TCNForecaster(nn.Module):
         return self.fc(x[:, :, -1]).squeeze(-1)
 
 
-def build_model(name, seq_len, num_features, hidden_size):
+def build_model(name, seq_len, num_features, hidden_size, num_layers=1):
     if name == "MLP":
         return MLPForecaster(seq_len, num_features, hidden_size)
     if name == "SimpleRNN":
@@ -303,7 +307,7 @@ def build_model(name, seq_len, num_features, hidden_size):
     if name == "LSTM_Attention":
         return LSTMAttentionForecaster(num_features, hidden_size)
     if name == "BiGRU":
-        return BiGRUForecaster(num_features, hidden_size)
+        return BiGRUForecaster(num_features, hidden_size, num_layers=num_layers)
     if name == "CNN1D":
         return CNN1DForecaster(num_features, hidden_size)
     if name == "TCN":
