@@ -62,6 +62,10 @@ Selected for the ≥3-detailed-comparison requirement. Deliberately kept to the 
    - **Lag aggregation (the advisor's critical requirement):** SHAP gives one value per (timestep, column) cell — 72×15=1080 numbers per window. These are summed (`|SHAP|`) over the 72 lag positions per column, then averaged over the 200 windows, collapsing down to **15 feature-level scores, no lag columns ever shown**.
    - Result: `national_demand_mw`'s own lag dominates (mean |SHAP|=1.338, ~6x the next feature) — consistent with Phase 1's finding that the target's own history is the strongest signal. Ranked next: temperature at all 3 stations (T2M) and specific humidity (QV2M); wind (W2M), cloud/precipitation (TQL), and the `holiday`/`school` calendar flags rank lowest.
    - Full ranking: `results/phase2_shap_feature_importance.csv`. Plot: `plots/phase2_shap_feature_importance.png`.
-3. Top-k feature subset experiments (k = 3,4,5,6,8,10) — selected from the Phase 2 SHAP ranking above
+3. Top-k feature subset experiments — k = 3,4,5,6,8,10, top-k features taken from the Phase 2 SHAP ranking, same architecture/window (BiGRU@72h) so only the feature set varies. See `phase3_topk.py`.
+   - Each subset is retrained from scratch with its own StandardScaler fit on train only (a per-subset refit, not a slice of the full-feature scaler) and the same 30-epoch, no-validation protocol as Phase 1. The k=15 (all-features) row is pulled from the existing Phase 1 BiGRU@72h result rather than retrained -- identical setup already computed.
+   - **k=4 (target lag + all 3 stations' temperature) is the best config overall — R²=0.9885, RMSE=20.31 MW, beating even k=15's R²=0.9877.** Past k=4, adding humidity/wind/calendar features doesn't help and mildly hurts (R² dips to 0.9877-0.9883 for k=5..10) — likely extra noise/capacity working against the fixed unregularized 30-epoch budget rather than adding real signal.
+   - Full table: `results/phase3_topk_results.csv`. Plot: `plots/phase3_topk_performance.png`.
+   - **Carries into Phase 4:** HPO should run on k=4's feature set (the empirical best), not an arbitrary k.
 4. HPO (Optuna + one faster alternative), selected features only
 5. Final evaluation on locked test set (MAE, RMSE, R²)
