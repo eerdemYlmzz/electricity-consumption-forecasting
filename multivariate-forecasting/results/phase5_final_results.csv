@@ -1,0 +1,2 @@
+stage,model,window_length_h,k,hidden_size,learning_rate,batch_size,num_layers,params,mae,rmse,r2,mape
+"Phase 5 final (k=4, HPO'd)",BiGRU,72,4,256,0.00046534881364761817,32,1,402945,14.167428016662598,19.734644847967004,0.9891640543937683,1.1324670165777206

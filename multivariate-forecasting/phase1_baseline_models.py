@@ -29,7 +29,18 @@ Phase 4 has a real mechanism (real val split, HPO) to justify it against.
 Metrics: MAE, RMSE, R^2 (advisor's minimum) plus MAPE -- safe to add here
 since national_demand_mw never approaches zero (unlike e.g. solar
 irradiance, which is exactly zero at night and blows MAPE up).
+
+Also included: a "Persistence" naive baseline (predict y_t as the last
+known value, y_{t-1} -- no training, no parameters) so the R^2/RMSE of
+the real models can be read against how much is trivially explained by
+the series' own autocorrelation, not just against zero. And a checkpoint
+of every trained model's state_dict under results/checkpoints/, so Phase
+2's XAI work can load these exact weights instead of retraining --
+reload with build_model(name, seq_len, num_inputs, HIDDEN_SIZE)
+.load_state_dict(torch.load(path)).
 """
+import argparse
+import os
 import random
 import time
 
@@ -43,8 +54,11 @@ from sklearn.preprocessing import StandardScaler
 SEED = 42
 DATA_PATH = "data/processed/panama_load.csv"
 RESULTS_PATH = "results/phase1_baseline_results.csv"
+CHECKPOINT_DIR = "results/checkpoints"
 TARGET = "national_demand_mw"
 WINDOW_LENGTHS = [48, 72, 96, 120, 144, 168]
+TRAINED_MODEL_NAMES = ["MLP", "SimpleRNN", "LSTM", "GRU", "LSTM_Attention", "BiGRU", "CNN1D", "TCN"]
+ALL_MODEL_NAMES = TRAINED_MODEL_NAMES + ["Persistence"]
 HORIZON = 1
 TRAIN_FRACTION = 0.8
 EPOCHS = 30
@@ -166,41 +180,59 @@ class GRUForecaster(nn.Module):
 
 
 class LSTMAttentionForecaster(nn.Module):
-    """LSTM over the window, then additive attention pooling over every
-    timestep's hidden state (instead of using only the final one)."""
+    """LSTM over the window, then Bahdanau-style additive attention: the
+    LSTM's own final hidden state is the query, scored (with a tanh
+    nonlinearity) against every timestep's hidden state as keys --
+    score_t = v^T tanh(W1 h_t + W2 h_final). Values are a separate
+    learned projection (W_v) of the hidden states, not the raw hidden
+    states themselves -- this decouples "what determines the attention
+    weight" (Q/K space) from "what gets averaged into the context" (V
+    space), matching standard QKV attention instead of reusing the keys
+    as values. Context vector is concatenated with the final hidden state
+    before the output layer (Luong-style combine)."""
 
     def __init__(self, num_features, hidden_size):
         super().__init__()
         self.lstm = nn.LSTM(num_features, hidden_size, batch_first=True)
-        self.attn_score = nn.Linear(hidden_size, 1)
-        self.fc = nn.Linear(hidden_size, 1)
-
-    def forward(self, x):
-        out, _ = self.lstm(x)  # (batch, seq_len, hidden)
-        scores = self.attn_score(out)  # (batch, seq_len, 1)
-        weights = torch.softmax(scores, dim=1)
-        context = (weights * out).sum(dim=1)  # (batch, hidden)
-        return self.fc(context).squeeze(-1)
-
-
-class BiGRUForecaster(nn.Module):
-    """Bidirectional GRU. No leakage concern: both directions only ever see
-    the past window itself, never the target -- the backward pass just
-    reads that same window right-to-left, it doesn't look past the window
-    end. Final representation is the forward pass's last hidden state
-    concatenated with the backward pass's last hidden state (h_n), not
-    out[:, -1, :] -- the latter would pair the forward-final state with the
-    backward direction's state after seeing only one input, which wastes
-    the backward pass."""
-
-    def __init__(self, num_features, hidden_size):
-        super().__init__()
-        self.gru = nn.GRU(num_features, hidden_size, batch_first=True, bidirectional=True)
+        self.W1 = nn.Linear(hidden_size, hidden_size)  # keys
+        self.W2 = nn.Linear(hidden_size, hidden_size)  # query
+        self.W_v = nn.Linear(hidden_size, hidden_size)  # values
+        self.v = nn.Linear(hidden_size, 1)
         self.fc = nn.Linear(hidden_size * 2, 1)
 
     def forward(self, x):
-        _, h_n = self.gru(x)  # h_n: (2, batch, hidden_size)
-        combined = torch.cat([h_n[0], h_n[1]], dim=1)
+        out, (h_n, _) = self.lstm(x)  # out: (batch, seq_len, hidden); h_n[-1]: (batch, hidden)
+        query = h_n[-1]
+        scores = self.v(torch.tanh(self.W1(out) + self.W2(query).unsqueeze(1)))  # (batch, seq_len, 1)
+        weights = torch.softmax(scores, dim=1)
+        values = self.W_v(out)  # (batch, seq_len, hidden)
+        context = (weights * values).sum(dim=1)  # (batch, hidden)
+        combined = torch.cat([context, query], dim=1)  # (batch, hidden*2)
+        return self.fc(combined).squeeze(-1)
+
+
+class BiGRUForecaster(nn.Module):
+    """Bidirectional GRU, optionally stacked (num_layers > 1, used by
+    Phase 4's HPO search). No leakage concern: both directions only ever
+    see the past window itself, never the target -- the backward pass
+    just reads that same window right-to-left, it doesn't look past the
+    window end. Final representation is the LAST layer's forward hidden
+    state concatenated with the LAST layer's backward hidden state --
+    h_n is ordered (layer0_fwd, layer0_bwd, layer1_fwd, layer1_bwd, ...),
+    so the final layer's pair is always h_n[-2]/h_n[-1] (this also
+    correctly reduces to h_n[0]/h_n[1] when num_layers=1). Not
+    out[:, -1, :] -- that would pair the forward-final state with the
+    backward direction's state after seeing only one input, which wastes
+    the backward pass."""
+
+    def __init__(self, num_features, hidden_size, num_layers=1):
+        super().__init__()
+        self.gru = nn.GRU(num_features, hidden_size, num_layers=num_layers, batch_first=True, bidirectional=True)
+        self.fc = nn.Linear(hidden_size * 2, 1)
+
+    def forward(self, x):
+        _, h_n = self.gru(x)  # h_n: (num_layers*2, batch, hidden_size)
+        combined = torch.cat([h_n[-2], h_n[-1]], dim=1)
         return self.fc(combined).squeeze(-1)
 
 
@@ -263,7 +295,7 @@ class TCNForecaster(nn.Module):
         return self.fc(x[:, :, -1]).squeeze(-1)
 
 
-def build_model(name, seq_len, num_features, hidden_size):
+def build_model(name, seq_len, num_features, hidden_size, num_layers=1):
     if name == "MLP":
         return MLPForecaster(seq_len, num_features, hidden_size)
     if name == "SimpleRNN":
@@ -275,7 +307,7 @@ def build_model(name, seq_len, num_features, hidden_size):
     if name == "LSTM_Attention":
         return LSTMAttentionForecaster(num_features, hidden_size)
     if name == "BiGRU":
-        return BiGRUForecaster(num_features, hidden_size)
+        return BiGRUForecaster(num_features, hidden_size, num_layers=num_layers)
     if name == "CNN1D":
         return CNN1DForecaster(num_features, hidden_size)
     if name == "TCN":
@@ -330,7 +362,32 @@ def evaluate_model(model, X_test, y_test, target_scaler):
     return {"mae": mae, "rmse": rmse, "r2": r2, "mape": mape}, pred, true
 
 
-def run_all():
+def persistence_metrics(test_df, seq_len, horizon):
+    """Naive forecast: predict y_t as y_{t-1} (the last known value before
+    the horizon gap) -- no training, no parameters, no scaling needed
+    since it never leaves raw units. Evaluated on exactly the same target
+    indices the real models see for this window length (same offset
+    create_sequences uses), so it's a fair like-for-like comparison, not
+    an easier or harder subset of the test set."""
+    raw_target = test_df[TARGET].values
+    offset = seq_len + horizon - 1
+    true = raw_target[offset:]
+    pred = raw_target[offset - 1 : len(raw_target) - 1]
+    mae = mean_absolute_error(true, pred)
+    rmse = mean_squared_error(true, pred) ** 0.5
+    r2 = r2_score(true, pred)
+    mape = mean_absolute_percentage_error(true, pred) * 100
+    return {"mae": mae, "rmse": rmse, "r2": r2, "mape": mape}
+
+
+def run_all(model_names=None, window_lengths=None):
+    """model_names/window_lengths let you retrain just a subset (e.g. only
+    LSTM_Attention while iterating on it) instead of all 48 configs every
+    time. Results are upserted into RESULTS_PATH keyed on
+    (window_length_h, model) -- a partial run updates only its own rows,
+    it never wipes out the other architectures' already-computed results.
+    Defaults (no args) reproduce the full 48-config run exactly as before.
+    """
     _test_create_sequences()
     set_seed(SEED)
 
@@ -356,22 +413,35 @@ def run_all():
     test_inputs = np.concatenate([test_features, test_target.reshape(-1, 1)], axis=1)
     num_inputs = len(feature_cols) + 1
 
-    model_names = ["MLP", "SimpleRNN", "LSTM", "GRU", "LSTM_Attention", "BiGRU", "CNN1D", "TCN"]
+    model_names = model_names or ALL_MODEL_NAMES
+    window_lengths = window_lengths or WINDOW_LENGTHS
+    unknown = sorted(set(model_names) - set(ALL_MODEL_NAMES))
+    if unknown:
+        raise ValueError(f"unknown model name(s): {unknown}; choose from {ALL_MODEL_NAMES}")
     records = []
 
-    for seq_len in WINDOW_LENGTHS:
+    for seq_len in window_lengths:
         X_train, y_train = create_sequences(train_inputs, train_target, seq_len, HORIZON)
         X_test, y_test = create_sequences(test_inputs, test_target, seq_len, HORIZON)
 
         for name in model_names:
-            set_seed(SEED)  # identical init/shuffle across models and window lengths
-            model = build_model(name, seq_len, num_inputs, HIDDEN_SIZE)
-            n_params = sum(p.numel() for p in model.parameters())
+            if name == "Persistence":
+                metrics = persistence_metrics(test_df, seq_len, HORIZON)
+                n_params, elapsed, final_train_loss = 0, 0.0, float("nan")
+            else:
+                set_seed(SEED)  # identical init/shuffle across models and window lengths
+                model = build_model(name, seq_len, num_inputs, HIDDEN_SIZE)
+                n_params = sum(p.numel() for p in model.parameters())
 
-            start = time.time()
-            history = train_model(model, X_train, y_train, EPOCHS, BATCH_SIZE, LEARNING_RATE)
-            metrics, _, _ = evaluate_model(model, X_test, y_test, target_scaler)
-            elapsed = time.time() - start
+                start = time.time()
+                history = train_model(model, X_train, y_train, EPOCHS, BATCH_SIZE, LEARNING_RATE)
+                metrics, _, _ = evaluate_model(model, X_test, y_test, target_scaler)
+                elapsed = time.time() - start
+                final_train_loss = history[-1]
+
+                os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+                checkpoint_path = os.path.join(CHECKPOINT_DIR, f"{name}_{seq_len}h.pt")
+                torch.save(model.state_dict(), checkpoint_path)
 
             print(
                 f"window={seq_len:>3}h  model={name:<15} "
@@ -382,8 +452,8 @@ def run_all():
                 "window_length_h": seq_len,
                 "model": name,
                 "params": n_params,
-                "epochs": EPOCHS,
-                "final_train_loss": history[-1],
+                "epochs": EPOCHS if name != "Persistence" else 0,
+                "final_train_loss": final_train_loss,
                 "mae": metrics["mae"],
                 "rmse": metrics["rmse"],
                 "r2": metrics["r2"],
@@ -391,11 +461,36 @@ def run_all():
                 "train_seconds": elapsed,
             })
 
-    results = pd.DataFrame(records)
+    new_results = pd.DataFrame(records)
+
+    key_cols = ["window_length_h", "model"]
+    if os.path.exists(RESULTS_PATH):
+        existing = pd.read_csv(RESULTS_PATH)
+        still_valid = existing.merge(new_results[key_cols], on=key_cols, how="left", indicator=True)
+        existing = existing[still_valid["_merge"].values == "left_only"]
+        results = pd.concat([existing, new_results], ignore_index=True)
+    else:
+        results = new_results
+    results = results.sort_values(key_cols).reset_index(drop=True)
+
     results.to_csv(RESULTS_PATH, index=False)
-    print(f"\nsaved: {RESULTS_PATH}  ({len(results)} rows)")
+    print(f"\nsaved: {RESULTS_PATH}  ({len(results)} rows total, {len(new_results)} updated this run)")
     return results
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--models", nargs="+", choices=ALL_MODEL_NAMES, default=None,
+        help="Subset of architectures to (re)train. Default: all 8.",
+    )
+    parser.add_argument(
+        "--windows", nargs="+", type=int, choices=WINDOW_LENGTHS, default=None,
+        help="Subset of window lengths (hours) to (re)train. Default: all 6.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run_all()
+    args = parse_args()
+    run_all(model_names=args.models, window_lengths=args.windows)
