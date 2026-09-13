@@ -1,3 +1,3 @@
 # electricity-consumption-forecasting
-This repository includes a study of RNN architectures (LSTM, GRU, BiLSTM, BiGRU, Attention) for electricity consumption forecasting using PyTorch.
-Dataset: 
+This repository includes a study of RNN architectures (LSTM, GRU, BiLSTM, BiGRU) and LSTM-Attention for electricity demand forecasting using PyTorch.
+
