@@ -1,4 +1,5 @@
 
 .env/
 multivariate-forecasting/data/raw/
+multivariate-forecasting/results/checkpoints/
 __pycache__/
